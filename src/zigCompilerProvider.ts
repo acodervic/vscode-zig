@@ -19,7 +19,7 @@ export default class ZigCompilerProvider implements vscode.CodeActionProvider {
         this.astDiagnostics = vscode.languages.createDiagnosticCollection("zig");
 
         vscode.workspace.onDidChangeTextDocument(this.maybeDoASTGenErrorCheck, this);
-        vscode.workspace.onDidChangeTextDocument(this.maybeDoBuildOnSave, this);
+        //vscode.workspace.onDidChangeTextDocument(this.maybeDoBuildOnSave, this); maybeDoASTGenErrorCheck会自动Buil
     }
 
     maybeDoASTGenErrorCheck(change: vscode.TextDocumentChangeEvent) {
@@ -68,7 +68,9 @@ export default class ZigCompilerProvider implements vscode.CodeActionProvider {
         const cwd = vscode.workspace.getWorkspaceFolder(textDocument.uri).uri
             .fsPath;
 
-        const childProcess = cp.spawn(zigPath, ["ast-check"], { cwd });
+        //const childProcess = cp.spawn(zigPath, ["ast-check"], { cwd });
+        const childProcess = cp.spawn(zigPath, ["build", "--summary", "none"], { cwd });
+
 
         if (!childProcess.pid) {
             return;
@@ -85,27 +87,43 @@ export default class ZigCompilerProvider implements vscode.CodeActionProvider {
             this.doASTGenErrorCheck.cancel();
             this.astDiagnostics.delete(textDocument.uri);
 
-            if (stderr.length === 0) {return;}
+            if (stderr.length === 0) { return; }
             const diagnostics: { [id: string]: vscode.Diagnostic[] } = {};
             const regex = /(\S.*):(\d*):(\d*): ([^:]*): (.*)/g;
+            console.log(stderr);
 
             for (let match = regex.exec(stderr); match; match = regex.exec(stderr)) {
-                const path = textDocument.uri.fsPath;
+                try {
+                    console.log(match);
 
-                const line = parseInt(match[2]) - 1;
-                const column = parseInt(match[3]) - 1;
-                const type = match[4];
-                const message = match[5];
+                    const path = textDocument.uri.fsPath;
 
-                const severity =
-          type.trim().toLowerCase() === "error"
-              ? vscode.DiagnosticSeverity.Error
-              : vscode.DiagnosticSeverity.Information;
-                const range = new vscode.Range(line, column, line, Infinity);
+                    const line = parseInt(match[2]) - 1;
+                    const column = parseInt(match[3]);
+                    const type = match[4];
+                    const message = match[5];
 
-                if (diagnostics[path] === null) {diagnostics[path] = [];}
-                diagnostics[path].push(new vscode.Diagnostic(range, message, severity));
+                    const severity =
+                        type.trim().toLowerCase() === "error"
+                            ? vscode.DiagnosticSeverity.Error
+                            : vscode.DiagnosticSeverity.Information;
+                    const range = new vscode.Range(line, column, line, Infinity);
+
+                    if (diagnostics[path] === null || diagnostics[path] == undefined) { diagnostics[path] = []; }
+                    console.log(range);
+                    console.log(message);
+                    console.log(severity);
+                    console.log(diagnostics[path]);
+
+                    diagnostics[path].push(new vscode.Diagnostic(range, message, severity));
+                } catch (error) {
+                    console.log(error);
+
+                }
             }
+
+
+            console.log(diagnostics);
 
             for (const path in diagnostics) {
                 const diagnostic = diagnostics[path];
